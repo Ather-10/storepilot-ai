@@ -110,8 +110,40 @@ export default function WebsitesPage() {
   }, []);
 
   useEffect(() => {
-    void loadWebsites();
-  }, [loadWebsites]);
+  let ignore = false;
+
+  async function fetchWebsites() {
+    try {
+      const [activeResponse, archivedResponse] = await Promise.all([
+        fetch("/api/websites"),
+        fetch("/api/websites?view=archived"),
+      ]);
+
+      const activeResult = await activeResponse.json();
+      const archivedResult = await archivedResponse.json();
+
+      if (ignore) return;
+
+      if (activeResult.success) {
+        setWebsites(activeResult.data);
+      }
+
+      if (archivedResult.success) {
+        setArchivedWebsites(archivedResult.data);
+      }
+    } catch (error) {
+      if (!ignore) {
+        console.error("Website loading error:", error);
+      }
+    }
+  }
+
+  void fetchWebsites();
+
+  return () => {
+    ignore = true;
+  };
+}, []);
 
   const currentWebsites =
     view === "active" ? websites : archivedWebsites;

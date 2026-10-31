@@ -37,6 +37,152 @@ const bottomLinks = [
   { label: "Help & Support", href: "/support", icon: LifeBuoy },
 ];
 
+function isActivePath(pathname: string, href: string) {
+  return href === "/"
+    ? pathname === "/"
+    : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function Brand() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white">
+        <Sparkles size={21} />
+      </div>
+
+      <div>
+        <h1 className="text-lg font-bold tracking-tight text-white">
+          StorePilot<span className="text-violet-400"> AI</span>
+        </h1>
+        <p className="text-[10px] tracking-[0.2em] text-slate-500">
+          STORE INTELLIGENCE
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function NavigationLinks({
+  pathname,
+  onNavigate,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
+      {navigation.map((group) => (
+        <div key={group.title}>
+          <p className="mb-3 px-3 text-[10px] font-semibold tracking-[0.18em] text-slate-500">
+            {group.title}
+          </p>
+
+          <div className="space-y-1">
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const active = isActivePath(pathname, item.href);
+
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  onClick={onNavigate}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                    active
+                      ? "bg-violet-600 text-white shadow-lg shadow-violet-950/30"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  }`}
+                >
+                  <Icon size={18} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function BottomNavigationLinks({
+  pathname,
+  onNavigate,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
+      {bottomLinks.map((item) => {
+        const Icon = item.icon;
+
+        return (
+          <Link
+            key={item.label}
+            href={item.href}
+            onClick={onNavigate}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+              isActivePath(pathname, item.href)
+                ? "bg-violet-600 text-white"
+                : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <Icon size={18} />
+            {item.label}
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
+function AccountActions({
+  user,
+  loggingOut,
+  onLogout,
+  onNavigate,
+}: {
+  user: User | null;
+  loggingOut: boolean;
+  onLogout: () => void;
+  onNavigate: () => void;
+}) {
+  return (
+    <>
+      <div className="border-b border-slate-700 px-3 py-3">
+        <p className="text-xs text-slate-400">Signed in as</p>
+        <p className="mt-1 truncate text-sm font-medium text-white">
+          {user?.email || "Loading account..."}
+        </p>
+      </div>
+
+      <Link
+        href="/settings"
+        onClick={onNavigate}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition hover:bg-slate-700 hover:text-white"
+      >
+        <UserRound size={16} />
+        Account settings
+      </Link>
+
+      <button
+        type="button"
+        disabled={loggingOut}
+        onClick={onLogout}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
+      >
+        {loggingOut ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <LogOut size={16} />
+        )}
+        {loggingOut ? "Signing out..." : "Sign out"}
+      </button>
+    </>
+  );
+}
+
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -46,13 +192,15 @@ export function Sidebar() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // Load authenticated user and subscribe to auth changes.
   useEffect(() => {
     const supabase = createClient();
+    let mounted = true;
 
     async function loadUser() {
       const { data, error } = await supabase.auth.getUser();
 
-      if (!error) {
+      if (mounted && !error) {
         setUser(data.user);
       }
     }
@@ -62,16 +210,16 @@ export function Sidebar() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      if (mounted) {
+        setUser(session?.user ?? null);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
-
-  useEffect(() => {
-    setDrawerOpen(false);
-    setAccountOpen(false);
-  }, [pathname]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -85,8 +233,16 @@ export function Sidebar() {
       return;
     }
 
+    setAccountOpen(false);
+    setDrawerOpen(false);
+
     router.replace("/login");
     router.refresh();
+  }
+
+  function closeMenus() {
+    setAccountOpen(false);
+    setDrawerOpen(false);
   }
 
   const fullName =
@@ -95,103 +251,6 @@ export function Sidebar() {
     "My Account";
 
   const initial = fullName.charAt(0).toUpperCase();
-
-  function isActive(href: string) {
-    return href === "/"
-      ? pathname === "/"
-      : pathname === href || pathname.startsWith(`${href}/`);
-  }
-
-  function Brand() {
-    return (
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white">
-          <Sparkles size={21} />
-        </div>
-
-        <div>
-          <h1 className="text-lg font-bold tracking-tight text-white">
-            StorePilot<span className="text-violet-400"> AI</span>
-          </h1>
-          <p className="text-[10px] tracking-[0.2em] text-slate-500">
-            STORE INTELLIGENCE
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  function NavigationLinks() {
-    return (
-      <>
-        {navigation.map((group) => (
-          <div key={group.title}>
-            <p className="mb-3 px-3 text-[10px] font-semibold tracking-[0.18em] text-slate-500">
-              {group.title}
-            </p>
-
-            <div className="space-y-1">
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.href);
-
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                      active
-                        ? "bg-violet-600 text-white shadow-lg shadow-violet-950/30"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                    }`}
-                  >
-                    <Icon size={18} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </>
-    );
-  }
-
-  function AccountActions() {
-    return (
-      <>
-        <div className="border-b border-slate-700 px-3 py-3">
-          <p className="text-xs text-slate-400">Signed in as</p>
-          <p className="mt-1 truncate text-sm font-medium text-white">
-            {user?.email || "Loading account..."}
-          </p>
-        </div>
-
-        <Link
-          href="/settings"
-          onClick={() => setAccountOpen(false)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition hover:bg-slate-700 hover:text-white"
-        >
-          <UserRound size={16} />
-          Account settings
-        </Link>
-
-        <button
-          type="button"
-          disabled={loggingOut}
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
-        >
-          {loggingOut ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <LogOut size={16} />
-          )}
-          {loggingOut ? "Signing out..." : "Sign out"}
-        </button>
-      </>
-    );
-  }
 
   return (
     <>
@@ -211,33 +270,16 @@ export function Sidebar() {
         </div>
 
         <nav className="flex-1 space-y-7 overflow-y-auto p-4">
-          <NavigationLinks />
+          <NavigationLinks pathname={pathname} />
         </nav>
 
         <div className="space-y-1 border-t border-slate-800 p-4">
-          {bottomLinks.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                  isActive(item.href)
-                    ? "bg-violet-600 text-white"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`}
-              >
-                <Icon size={18} />
-                {item.label}
-              </Link>
-            );
-          })}
+          <BottomNavigationLinks pathname={pathname} />
 
           <div className="relative mt-4">
             <button
               type="button"
-              onClick={() => setAccountOpen(!accountOpen)}
+              onClick={() => setAccountOpen((open) => !open)}
               className="flex w-full items-center gap-3 rounded-lg bg-slate-800/70 p-3 text-left transition hover:bg-slate-800"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold text-white">
@@ -263,7 +305,12 @@ export function Sidebar() {
 
             {accountOpen && (
               <div className="absolute bottom-full left-0 z-50 mb-2 w-full overflow-hidden rounded-xl border border-slate-700 bg-[#1A2232] p-1 shadow-xl">
-                <AccountActions />
+                <AccountActions
+                  user={user}
+                  loggingOut={loggingOut}
+                  onLogout={handleLogout}
+                  onNavigate={() => setAccountOpen(false)}
+                />
               </div>
             )}
           </div>
@@ -286,6 +333,7 @@ export function Sidebar() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white">
               <Sparkles size={17} />
             </div>
+
             <span className="whitespace-nowrap text-base font-bold tracking-tight text-slate-900">
               StorePilot<span className="text-violet-600"> AI</span>
             </span>
@@ -296,7 +344,7 @@ export function Sidebar() {
           <button
             type="button"
             aria-label="Open account menu"
-            onClick={() => setAccountOpen(!accountOpen)}
+            onClick={() => setAccountOpen((open) => !open)}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 text-violet-700 transition hover:bg-violet-200"
           >
             <UserRound size={20} />
@@ -304,7 +352,12 @@ export function Sidebar() {
 
           {accountOpen && (
             <div className="absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-xl border border-slate-200 bg-[#1A2232] p-1 shadow-xl">
-              <AccountActions />
+              <AccountActions
+                user={user}
+                loggingOut={loggingOut}
+                onLogout={handleLogout}
+                onNavigate={() => setAccountOpen(false)}
+              />
             </div>
           )}
         </div>
@@ -350,7 +403,10 @@ export function Sidebar() {
         </div>
 
         <nav className="flex-1 space-y-7 overflow-y-auto p-4">
-          <NavigationLinks />
+          <NavigationLinks
+            pathname={pathname}
+            onNavigate={closeMenus}
+          />
 
           <div>
             <p className="mb-3 px-3 text-[10px] font-semibold tracking-[0.18em] text-slate-500">
@@ -358,24 +414,10 @@ export function Sidebar() {
             </p>
 
             <div className="space-y-1">
-              {bottomLinks.map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                      isActive(item.href)
-                        ? "bg-violet-600 text-white"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                    }`}
-                  >
-                    <Icon size={18} />
-                    {item.label}
-                  </Link>
-                );
-              })}
+              <BottomNavigationLinks
+                pathname={pathname}
+                onNavigate={closeMenus}
+              />
             </div>
           </div>
         </nav>
