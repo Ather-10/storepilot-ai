@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   ArrowUpRight,
   Globe,
@@ -23,6 +24,7 @@ import type {
 
 // API response type
 type AuditApiData = {
+  auditId: string;
   websiteUrl: string;
   score: number;
   summary: AuditSummary;
@@ -31,12 +33,22 @@ type AuditApiData = {
 
 // Audit history record type
 type AuditRecord = {
+  id: string;
   domain: string;
   type: string;
   date: string;
-  status: "Completed";
+  status: "Completed" | "Pending" | "Failed";
   score: number;
   findingsCount: number;
+};
+
+type AuditHistoryResponse = {
+  id: string;
+  website_url: string;
+  score: number;
+  status: string;
+  total_findings: number;
+  created_at: string;
 };
 
 export function Overview() {
@@ -45,11 +57,103 @@ export function Overview() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+
   const [auditResult, setAuditResult] =
     useState<AuditApiData | null>(null);
 
   const [auditHistory, setAuditHistory] =
     useState<AuditRecord[]>([]);
+
+  // Load audit history from database
+  const loadAuditHistory = useCallback(
+    async (): Promise<AuditRecord[]> => {
+      const response = await fetch("/api/audit/history", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || "Unable to load audit history."
+        );
+      }
+
+      if (!Array.isArray(result.data)) {
+        throw new Error("Invalid audit history response.");
+      }
+
+      return (result.data as AuditHistoryResponse[]).map(
+        (audit) => {
+          let domain = audit.website_url;
+
+          try {
+            domain = new URL(audit.website_url).hostname;
+          } catch {
+            // Keep the original URL if it cannot be parsed.
+          }
+
+          const status: AuditRecord["status"] =
+            audit.status === "completed"
+              ? "Completed"
+              : audit.status === "failed"
+                ? "Failed"
+                : "Pending";
+
+          return {
+            id: audit.id,
+            domain,
+            type: "SEO website audit",
+            date: new Date(audit.created_at).toLocaleDateString(),
+            status,
+            score: audit.score,
+            findingsCount: audit.total_findings,
+          };
+        }
+      );
+    },
+    []
+  );
+
+  // Load history automatically when dashboard opens
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchHistory() {
+      try {
+        setHistoryError("");
+
+        const records = await loadAuditHistory();
+
+        if (!cancelled) {
+          setAuditHistory(records);
+        }
+      } catch (error) {
+        console.error("History loading error:", error);
+
+        if (!cancelled) {
+          setHistoryError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load audit history."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    }
+
+    void fetchHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAuditHistory]);
 
   // Submit audit request
   async function handleAuditSubmit(
@@ -85,27 +189,33 @@ export function Overview() {
 
       const auditData: AuditApiData = result.data;
 
-      // Store audit result
+      // Store latest audit result
       setAuditResult(auditData);
-
-      // Create audit history record
-      const newAudit: AuditRecord = {
-        domain: new URL(auditData.websiteUrl).hostname,
-        type: "SEO website audit",
-        date: new Date().toLocaleDateString(),
-        status: "Completed",
-        score: auditData.score,
-        findingsCount: auditData.findings.length,
-      };
-
-      // Add latest audit at the beginning
-      setAuditHistory((previous) => [
-        newAudit,
-        ...previous,
-      ]);
-
       setUrl(auditData.websiteUrl);
       setMessage("Website audit completed successfully!");
+
+      // Refresh history independently
+      setHistoryLoading(true);
+      setHistoryError("");
+
+      try {
+        const updatedHistory = await loadAuditHistory();
+
+        setAuditHistory(updatedHistory);
+      } catch (historyError) {
+        console.error(
+          "History refresh error:",
+          historyError
+        );
+
+        setHistoryError(
+          historyError instanceof Error
+            ? historyError.message
+            : "Unable to refresh audit history."
+        );
+      } finally {
+        setHistoryLoading(false);
+      }
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -117,7 +227,7 @@ export function Overview() {
     }
   }
 
-  // Calculate live dashboard statistics
+  // Calculate dashboard statistics from database history
   const totalAudits = auditHistory.length;
 
   const uniqueWebsites = new Set(
@@ -322,32 +432,30 @@ export function Overview() {
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {auditResult.findings.map(
-                    (finding: AuditFinding) => (
-                      <div
-                        key={finding.id}
-                        className="rounded-lg border border-slate-200 p-4"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h4 className="font-semibold text-slate-900">
-                            {finding.title}
-                          </h4>
+                  {auditResult.findings.map((finding, index) => (
+                    <div
+                      key={finding.id ?? `${finding.title}-${index}`}
+                      className="rounded-lg border border-slate-200 p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="font-semibold text-slate-900">
+                          {finding.title}
+                        </h4>
 
-                          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium capitalize text-amber-700">
-                            {finding.severity}
-                          </span>
-                        </div>
-
-                        <p className="mt-2 text-sm text-slate-600">
-                          {finding.description}
-                        </p>
-
-                        <p className="mt-2 text-sm text-violet-700">
-                          Recommendation: {finding.recommendation}
-                        </p>
+                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium capitalize text-amber-700">
+                          {finding.severity}
+                        </span>
                       </div>
-                    )
-                  )}
+
+                      <p className="mt-2 text-sm text-slate-600">
+                        {finding.description}
+                      </p>
+
+                      <p className="mt-2 text-sm text-violet-700">
+                        Recommendation: {finding.recommendation}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -407,7 +515,7 @@ export function Overview() {
                 </div>
 
                 <p className="mt-4 text-3xl font-bold text-slate-900">
-                  {stat.value}
+                  {historyLoading ? "..." : stat.value}
                 </p>
 
                 <p className="mt-1 text-xs text-slate-400">
@@ -456,7 +564,25 @@ export function Overview() {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {auditHistory.length === 0 ? (
+                {historyLoading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-5 py-10 text-center text-sm text-slate-400"
+                    >
+                      Loading your audit history...
+                    </td>
+                  </tr>
+                ) : historyError ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-5 py-10 text-center text-sm text-red-500"
+                    >
+                      {historyError}
+                    </td>
+                  </tr>
+                ) : auditHistory.length === 0 ? (
                   <tr>
                     <td
                       colSpan={5}
@@ -466,9 +592,9 @@ export function Overview() {
                     </td>
                   </tr>
                 ) : (
-                  auditHistory.slice(0, 5).map((audit, index) => (
+                  auditHistory.slice(0, 5).map((audit) => (
                     <tr
-                      key={`${audit.domain}-${index}`}
+                      key={audit.id}
                       className="hover:bg-slate-50/70"
                     >
                       <td className="whitespace-nowrap px-5 py-4 font-medium text-slate-800">
@@ -484,7 +610,15 @@ export function Overview() {
                       </td>
 
                       <td className="whitespace-nowrap px-5 py-4">
-                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            audit.status === "Completed"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : audit.status === "Failed"
+                                ? "bg-red-50 text-red-700"
+                                : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
                           {audit.status}
                         </span>
                       </td>
@@ -512,8 +646,8 @@ export function Overview() {
             </p>
 
             <p className="mt-1 text-xs text-slate-500">
-              Your audit statistics and recent activity are updated
-              during this browser session.
+              Your audit statistics and recent activity are securely
+              saved and synchronized with your account.
             </p>
           </div>
         </section>

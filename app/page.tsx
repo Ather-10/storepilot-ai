@@ -1,10 +1,23 @@
 
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Overview } from "@/components/dashboard/overview";
 import { createClient } from "@/lib/supabase/server";
+import { connection } from "next/server";
 
-export default async function Home() {
+function DashboardLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#f7f8fc]">
+      <p className="text-sm text-slate-500">
+        Loading your workspace...
+      </p>
+    </div>
+  );
+}
+
+async function AuthenticatedDashboard() {
+  await connection();
   const supabase = await createClient();
 
   const {
@@ -24,5 +37,13 @@ export default async function Home() {
 
       <Overview />
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <AuthenticatedDashboard />
+    </Suspense>
   );
 }

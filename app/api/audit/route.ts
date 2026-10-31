@@ -7,13 +7,28 @@ import { parseWebsiteHtml } from "@/modules/audit/services/html-parser";
 import { runSeoRules } from "@/modules/audit/rules/seo-rules";
 import { calculateAuditScore } from "@/modules/audit/services/audit-scoring";
 
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   let savedAuditId: string | null = null;
 
   try {
-    // 1. Read and validate request body
+    // 1. Authenticate the current user
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Please log in to perform a website audit." },
+        { status: 401 }
+      );
+    }
+
+    // 2. Read and validate request body
     let body: unknown;
 
     try {
@@ -37,7 +52,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Validate URL
+    // 3. Validate URL
     const validation = validateWebsiteUrl(body.url);
 
     if (!validation.valid) {
@@ -47,7 +62,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Fetch website
+    // 4. Fetch website
     const fetchResult = await fetchWebsite(
       validation.url.toString()
     );
@@ -65,23 +80,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Parse HTML
+    // 5. Parse HTML
     const parsedWebsite = parseWebsiteHtml(
       fetchResult.html,
       fetchResult.url
     );
 
-    // 5. Run SEO rules
+    // 6. Run SEO rules
     const findings = runSeoRules(parsedWebsite);
 
-    // 6. Calculate audit score
+    // 7. Calculate audit score
     const auditScore = calculateAuditScore(findings);
 
-    // 7. Save audit in Supabase
+    // 8. Save audit with authenticated user's ID
     const { data: savedAudit, error: auditError } =
-      await supabaseAdmin
+      await supabase
         .from("audits")
         .insert({
+          user_id: user.id,
           website_url: parsedWebsite.pageUrl,
           score: auditScore.score,
           status: "completed",
@@ -106,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     savedAuditId = savedAudit.id;
 
-    // 8. Save findings linked to the audit
+    // 9. Save findings linked to the audit
     if (findings.length > 0) {
       const findingsToInsert = findings.map((finding) => ({
         audit_id: savedAuditId,
@@ -118,15 +134,15 @@ export async function POST(request: NextRequest) {
         evidence: finding.evidence,
       }));
 
-      const { error: findingsError } = await supabaseAdmin
+      const { error: findingsError } = await supabase
         .from("audit_findings")
         .insert(findingsToInsert);
 
       if (findingsError) {
         console.error("Findings database error:", findingsError);
 
-        // Remove the parent audit if its findings could not be saved.
-        const { error: cleanupError } = await supabaseAdmin
+        // Remove the audit if its findings could not be saved.
+        const { error: cleanupError } = await supabase
           .from("audits")
           .delete()
           .eq("id", savedAuditId);
@@ -142,7 +158,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 9. Return completed audit
+    // 10. Return completed audit
     return NextResponse.json({
       success: true,
       data: {
