@@ -1,8 +1,10 @@
 
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
+  ArrowRight,
   ArrowUpRight,
   Globe,
   Activity,
@@ -11,7 +13,10 @@ import {
   AlertTriangle,
   Clock3,
   Sparkles,
-  ArrowRight,
+  ExternalLink,
+  FileSearch,
+  CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,7 +27,6 @@ import type {
   AuditSummary,
 } from "@/modules/audit/audit.types";
 
-// API response type
 type AuditApiData = {
   auditId: string;
   websiteUrl: string;
@@ -31,28 +35,26 @@ type AuditApiData = {
   findings: AuditFinding[];
 };
 
-// Audit history record type
 type AuditRecord = {
   id: string;
   domain: string;
   type: string;
   date: string;
   status: "Completed" | "Pending" | "Failed";
-  score: number;
+  score: number | null;
   findingsCount: number;
 };
 
 type AuditHistoryResponse = {
   id: string;
   website_url: string;
-  score: number;
+  score: number | null;
   status: string;
   total_findings: number;
   created_at: string;
 };
 
 export function Overview() {
-  // State management
   const [url, setUrl] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -66,74 +68,66 @@ export function Overview() {
   const [auditHistory, setAuditHistory] =
     useState<AuditRecord[]>([]);
 
-  // Load audit history from database
-  const loadAuditHistory = useCallback(
-    async (): Promise<AuditRecord[]> => {
-      const response = await fetch("/api/audit/history", {
-        method: "GET",
-        cache: "no-store",
-      });
+  const loadAuditHistory = useCallback(async (): Promise<AuditRecord[]> => {
+    const response = await fetch("/api/audit/history", {
+      method: "GET",
+      cache: "no-store",
+    });
 
-      const result = await response.json();
+    const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(
-          result.error || "Unable to load audit history."
-        );
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to load audit history.");
+    }
+
+    if (!Array.isArray(result.data)) {
+      throw new Error("Invalid audit history response.");
+    }
+
+    return (result.data as AuditHistoryResponse[]).map((audit) => {
+      let domain = audit.website_url;
+
+      try {
+        domain = new URL(audit.website_url).hostname;
+      } catch {
+        // Keep original URL.
       }
 
-      if (!Array.isArray(result.data)) {
-        throw new Error("Invalid audit history response.");
-      }
+      const status: AuditRecord["status"] =
+        audit.status === "completed"
+          ? "Completed"
+          : audit.status === "failed"
+            ? "Failed"
+            : "Pending";
 
-      return (result.data as AuditHistoryResponse[]).map(
-        (audit) => {
-          let domain = audit.website_url;
+      return {
+        id: audit.id,
+        domain,
+        type: "SEO website audit",
+        date: new Date(audit.created_at).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }),
+        status,
+        score: audit.score,
+        findingsCount: audit.total_findings,
+      };
+    });
+  }, []);
 
-          try {
-            domain = new URL(audit.website_url).hostname;
-          } catch {
-            // Keep the original URL if it cannot be parsed.
-          }
-
-          const status: AuditRecord["status"] =
-            audit.status === "completed"
-              ? "Completed"
-              : audit.status === "failed"
-                ? "Failed"
-                : "Pending";
-
-          return {
-            id: audit.id,
-            domain,
-            type: "SEO website audit",
-            date: new Date(audit.created_at).toLocaleDateString(),
-            status,
-            score: audit.score,
-            findingsCount: audit.total_findings,
-          };
-        }
-      );
-    },
-    []
-  );
-
-  // Load history automatically when dashboard opens
   useEffect(() => {
     let cancelled = false;
 
     async function fetchHistory() {
       try {
-        setHistoryError("");
-
         const records = await loadAuditHistory();
 
         if (!cancelled) {
           setAuditHistory(records);
+          setHistoryError("");
         }
       } catch (error) {
-        console.error("History loading error:", error);
-
         if (!cancelled) {
           setHistoryError(
             error instanceof Error
@@ -155,7 +149,6 @@ export function Overview() {
     };
   }, [loadAuditHistory]);
 
-  // Submit audit request
   async function handleAuditSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -189,28 +182,21 @@ export function Overview() {
 
       const auditData: AuditApiData = result.data;
 
-      // Store latest audit result
       setAuditResult(auditData);
       setUrl(auditData.websiteUrl);
-      setMessage("Website audit completed successfully!");
+      setMessage("Your website audit has been completed successfully.");
 
-      // Refresh history independently
+      // Refresh history separately from the audit operation.
       setHistoryLoading(true);
       setHistoryError("");
 
       try {
         const updatedHistory = await loadAuditHistory();
-
         setAuditHistory(updatedHistory);
-      } catch (historyError) {
-        console.error(
-          "History refresh error:",
-          historyError
-        );
-
+      } catch (error) {
         setHistoryError(
-          historyError instanceof Error
-            ? historyError.message
+          error instanceof Error
+            ? error.message
             : "Unable to refresh audit history."
         );
       } finally {
@@ -227,7 +213,10 @@ export function Overview() {
     }
   }
 
-  // Calculate dashboard statistics from database history
+  const completedAudits = auditHistory.filter(
+    (audit) => audit.status === "Completed"
+  );
+
   const totalAudits = auditHistory.length;
 
   const uniqueWebsites = new Set(
@@ -235,12 +224,12 @@ export function Overview() {
   ).size;
 
   const averageScore =
-    totalAudits > 0
+    completedAudits.length > 0
       ? Math.round(
-          auditHistory.reduce(
-            (total, audit) => total + audit.score,
+          completedAudits.reduce(
+            (total, audit) => total + (audit.score ?? 0),
             0
-          ) / totalAudits
+          ) / completedAudits.length
         )
       : null;
 
@@ -249,53 +238,74 @@ export function Overview() {
     0
   );
 
+  const statistics = [
+    {
+      label: "Total Audits",
+      value: String(totalAudits),
+      description: "Website inspections completed",
+      icon: Search,
+      iconStyle: "bg-violet-50 text-violet-600",
+    },
+    {
+      label: "Websites",
+      value: String(uniqueWebsites),
+      description: "Unique websites inspected",
+      icon: Globe,
+      iconStyle: "bg-blue-50 text-blue-600",
+    },
+    {
+      label: "Average Score",
+      value: averageScore !== null ? `${averageScore}/100` : "—",
+      description: "Across completed audits",
+      icon: Activity,
+      iconStyle: "bg-emerald-50 text-emerald-600",
+    },
+    {
+      label: "Issues Found",
+      value: String(totalIssues),
+      description: "Detected improvement opportunities",
+      icon: AlertTriangle,
+      iconStyle: "bg-amber-50 text-amber-600",
+    },
+  ];
+
   return (
     <main className="min-w-0 flex-1">
-      {/* Top navigation */}
+      {/* Header */}
       <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
         <div>
           <p className="text-sm text-slate-500">
             Workspace / Overview
           </p>
-
           <h2 className="text-xl font-bold text-slate-900">
             Dashboard
           </h2>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 sm:flex">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Audit engine available
-          </div>
-
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">
-            A
-          </div>
+        <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          Audit engine available
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl space-y-8 p-5 sm:p-8">
         {/* Welcome */}
-        <section className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-violet-600">
-              YOUR WEBSITE INTELLIGENCE CENTER
-            </p>
+        <section>
+          <p className="text-xs font-bold tracking-[0.16em] text-violet-600">
+            WEBSITE INTELLIGENCE PLATFORM
+          </p>
 
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-              Welcome to StorePilot AI
-            </h1>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            Welcome to StorePilot AI
+          </h1>
 
-            <p className="mt-2 text-sm text-slate-500">
-              Understand your website. Discover opportunities. Grow smarter.
-            </p>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs text-slate-500">
-            <Clock3 className="mr-2 inline" size={14} />
-            Your workspace
-          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            Understand your website performance, uncover technical issues
+            and discover opportunities to improve your online presence.
+          </p>
         </section>
 
         {/* Audit form */}
@@ -304,11 +314,12 @@ export function Overview() {
           className="relative overflow-hidden rounded-2xl bg-[#171c32] p-6 text-white shadow-xl shadow-slate-200 sm:p-9"
         >
           <div className="pointer-events-none absolute -right-20 -top-32 h-80 w-80 rounded-full bg-violet-600/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-32 -left-20 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
 
           <div className="relative max-w-2xl">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
               <Sparkles size={14} />
-              AI-powered website intelligence
+              Website intelligence
             </div>
 
             <h2 className="text-2xl font-bold sm:text-3xl">
@@ -316,8 +327,8 @@ export function Overview() {
             </h2>
 
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-              Enter your website URL to prepare an audit of its SEO,
-              technical health, content structure and accessibility.
+              Analyze your website&apos;s SEO, technical health, content
+              structure and accessibility with a detailed website audit.
             </p>
 
             <form
@@ -348,10 +359,16 @@ export function Overview() {
                 disabled={loading}
                 className="h-12 bg-violet-600 px-6 text-white hover:bg-violet-500"
               >
-                {loading ? "Auditing website..." : "Start Audit"}
-
-                {!loading && (
-                  <ArrowRight className="ml-2" size={17} />
+                {loading ? (
+                  <>
+                    <RefreshCw className="mr-2 animate-spin" size={16} />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    Start Audit
+                    <ArrowRight className="ml-2" size={17} />
+                  </>
                 )}
               </Button>
             </form>
@@ -360,9 +377,7 @@ export function Overview() {
               <p
                 role="status"
                 className={`mt-3 text-sm ${
-                  auditResult
-                    ? "text-emerald-300"
-                    : "text-red-300"
+                  auditResult ? "text-emerald-300" : "text-red-300"
                 }`}
               >
                 {message}
@@ -375,155 +390,104 @@ export function Overview() {
           </div>
         </section>
 
-        {/* Audit results */}
+        {/* Latest audit result */}
         {auditResult && (
-          <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div>
-              <p className="text-sm text-slate-500">
-                Audit completed for
-              </p>
+          <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <CheckCircle2 size={21} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900">
+                    Audit completed successfully
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Your latest website analysis is ready.
+                  </p>
+                </div>
+              </div>
 
-              <h2 className="mt-1 text-lg font-bold text-slate-900">
-                {auditResult.websiteUrl}
-              </h2>
+              <Link
+                href={`/audits/${auditResult.auditId}`}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                View full report
+                <ArrowUpRight size={16} />
+              </Link>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-xl bg-violet-50 p-5">
-                <p className="text-sm text-violet-700">
-                  Website Health Score
+            <div className="grid gap-4 p-5 sm:grid-cols-3">
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Website
                 </p>
+                <p className="mt-1 break-all font-semibold text-slate-900">
+                  {auditResult.websiteUrl}
+                </p>
+              </div>
 
-                <p className="mt-2 text-4xl font-bold text-violet-900">
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Website score
+                </p>
+                <p className="mt-1 text-2xl font-bold text-violet-700">
                   {auditResult.score}/100
                 </p>
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-5">
-                <p className="text-sm text-slate-500">
-                  Total Findings
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Total findings
                 </p>
-
-                <p className="mt-2 text-4xl font-bold text-slate-900">
+                <p className="mt-1 text-2xl font-bold text-slate-900">
                   {auditResult.summary.totalFindings}
                 </p>
               </div>
-
-              <div className="rounded-xl bg-amber-50 p-5">
-                <p className="text-sm text-amber-700">
-                  High Priority
-                </p>
-
-                <p className="mt-2 text-4xl font-bold text-amber-900">
-                  {auditResult.summary.critical +
-                    auditResult.summary.high}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="mb-3 font-bold text-slate-900">
-                Detected Issues
-              </h3>
-
-              {auditResult.findings.length === 0 ? (
-                <p className="text-sm text-emerald-600">
-                  No SEO issues were detected by the current rules.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {auditResult.findings.map((finding, index) => (
-                    <div
-                      key={finding.id ?? `${finding.title}-${index}`}
-                      className="rounded-lg border border-slate-200 p-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h4 className="font-semibold text-slate-900">
-                          {finding.title}
-                        </h4>
-
-                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium capitalize text-amber-700">
-                          {finding.severity}
-                        </span>
-                      </div>
-
-                      <p className="mt-2 text-sm text-slate-600">
-                        {finding.description}
-                      </p>
-
-                      <p className="mt-2 text-sm text-violet-700">
-                        Recommendation: {finding.recommendation}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </section>
         )}
 
         {/* Statistics */}
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            {
-              label: "Total Audits",
-              value: String(totalAudits),
-              note: "Your audit activity",
-              icon: Search,
-              color: "bg-violet-100 text-violet-700",
-            },
-            {
-              label: "Websites",
-              value: String(uniqueWebsites),
-              note: "Unique websites audited",
-              icon: Globe,
-              color: "bg-blue-100 text-blue-700",
-            },
-            {
-              label: "Average Score",
-              value:
-                averageScore !== null
-                  ? `${averageScore}/100`
-                  : "—",
-              note: "Across completed audits",
-              icon: Activity,
-              color: "bg-emerald-100 text-emerald-700",
-            },
-            {
-              label: "Issues Found",
-              value: String(totalIssues),
-              note: "Detected opportunities",
-              icon: AlertTriangle,
-              color: "bg-amber-100 text-amber-700",
-            },
-          ].map((stat) => {
-            const Icon = stat.icon;
+        <section>
+          <div className="mb-4">
+            <h2 className="text-base font-bold text-slate-900">
+              Workspace performance
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              An overview of your website audit activity.
+            </p>
+          </div>
 
-            return (
-              <div
-                key={stat.label}
-                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-500">
-                    {stat.label}
-                  </span>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {statistics.map((stat) => {
+              const Icon = stat.icon;
 
-                  <div className={`rounded-lg p-2 ${stat.color}`}>
-                    <Icon size={19} />
+              return (
+                <div
+                  key={stat.label}
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-500">
+                      {stat.label}
+                    </span>
+                    <div className={`rounded-lg p-2.5 ${stat.iconStyle}`}>
+                      <Icon size={19} />
+                    </div>
                   </div>
+
+                  <p className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
+                    {historyLoading ? "..." : stat.value}
+                  </p>
+
+                  <p className="mt-1 text-xs text-slate-400">
+                    {stat.description}
+                  </p>
                 </div>
-
-                <p className="mt-4 text-3xl font-bold text-slate-900">
-                  {historyLoading ? "..." : stat.value}
-                </p>
-
-                <p className="mt-1 text-xs text-slate-400">
-                  {stat.note}
-                </p>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </section>
 
         {/* Recent audits */}
@@ -533,22 +497,17 @@ export function Overview() {
         >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
             <div>
-              <h3 className="font-bold text-slate-900">
+              <h2 className="font-bold text-slate-900">
                 Recent audits
-              </h3>
-
+              </h2>
               <p className="mt-1 text-xs text-slate-500">
-                Your latest website inspection activity
+                Access and review your latest website reports.
               </p>
             </div>
 
-            <a
-              href="#audits"
-              className="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              View all
-              <ArrowUpRight className="ml-1" size={15} />
-            </a>
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
+              {historyLoading ? "Loading..." : `${totalAudits} audits`}
+            </span>
           </div>
 
           <div className="overflow-x-auto">
@@ -560,45 +519,54 @@ export function Overview() {
                   <th className="px-5 py-4 font-medium">Date</th>
                   <th className="px-5 py-4 font-medium">Status</th>
                   <th className="px-5 py-4 font-medium">Score</th>
+                  <th className="px-5 py-4 text-right font-medium">Report</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-100">
                 {historyLoading ? (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-10 text-center text-sm text-slate-400"
-                    >
+                    <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400">
+                      <RefreshCw className="mr-2 inline animate-spin" size={15} />
                       Loading your audit history...
                     </td>
                   </tr>
                 ) : historyError ? (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-10 text-center text-sm text-red-500"
-                    >
+                    <td colSpan={6} className="px-5 py-10 text-center text-sm text-red-500">
                       {historyError}
                     </td>
                   </tr>
                 ) : auditHistory.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-10 text-center text-sm text-slate-400"
-                    >
-                      No audits yet. Submit a website URL to get started.
+                    <td colSpan={6} className="px-5 py-12 text-center">
+                      <FileSearch className="mx-auto mb-3 text-slate-300" size={30} />
+                      <p className="font-medium text-slate-700">
+                        No audits yet
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Enter a website URL above to create your first audit.
+                      </p>
                     </td>
                   </tr>
                 ) : (
                   auditHistory.slice(0, 5).map((audit) => (
                     <tr
                       key={audit.id}
-                      className="hover:bg-slate-50/70"
+                      className="group cursor-pointer transition hover:bg-violet-50/40"
+                      onClick={() => {
+                        window.location.href = `/audits/${audit.id}`;
+                      }}
                     >
-                      <td className="whitespace-nowrap px-5 py-4 font-medium text-slate-800">
-                        {audit.domain}
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                            <Globe size={17} />
+                          </div>
+                          <span className="font-semibold text-slate-800 group-hover:text-violet-700">
+                            {audit.domain}
+                          </span>
+                        </div>
                       </td>
 
                       <td className="whitespace-nowrap px-5 py-4 text-slate-500">
@@ -611,7 +579,7 @@ export function Overview() {
 
                       <td className="whitespace-nowrap px-5 py-4">
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                             audit.status === "Completed"
                               ? "bg-emerald-50 text-emerald-700"
                               : audit.status === "Failed"
@@ -623,8 +591,20 @@ export function Overview() {
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 font-bold text-slate-800">
-                        {audit.score}/100
+                      <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-800">
+                        {audit.score !== null ? `${audit.score}/100` : "—"}
+                      </td>
+
+                      <td className="whitespace-nowrap px-5 py-4 text-right">
+                        <Link
+                          href={`/audits/${audit.id}`}
+                          aria-label={`View report for ${audit.domain}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                        >
+                          View
+                          <ArrowUpRight size={14} />
+                        </Link>
                       </td>
                     </tr>
                   ))
@@ -632,22 +612,28 @@ export function Overview() {
               </tbody>
             </table>
           </div>
+
+          {!historyLoading && !historyError && auditHistory.length > 5 && (
+            <div className="border-t border-slate-100 px-5 py-3 text-center">
+              <p className="text-xs text-slate-400">
+                Showing the 5 most recent audits. Full audit history will be available in a dedicated page.
+              </p>
+            </div>
+          )}
         </section>
 
-        {/* Product note */}
-        <section className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50/70 p-4">
+        {/* Footer information */}
+        <section className="flex items-start gap-3 rounded-xl border border-violet-100 bg-violet-50/60 p-4">
           <div className="rounded-lg bg-white p-2 text-violet-600 shadow-sm">
-            <ShieldCheck size={20} />
+            <ShieldCheck size={19} />
           </div>
-
           <div>
             <p className="text-sm font-semibold text-slate-800">
-              Your website intelligence journey starts here.
+              Your website intelligence, in one place.
             </p>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Your audit statistics and recent activity are securely
-              saved and synchronized with your account.
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Your audit activity is securely associated with your account.
+              Select any completed audit to review its detailed report.
             </p>
           </div>
         </section>

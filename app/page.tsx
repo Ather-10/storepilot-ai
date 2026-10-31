@@ -18,6 +18,7 @@ function DashboardLoading() {
 
 async function AuthenticatedDashboard() {
   await connection();
+
   const supabase = await createClient();
 
   const {
@@ -30,11 +31,8 @@ async function AuthenticatedDashboard() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#f7f8fc]">
-      <div className="hidden lg:flex">
-        <Sidebar />
-      </div>
-
+    <div className="flex min-h-screen flex-col bg-[#f7f8fc] lg:flex-row">
+      <Sidebar />
       <Overview />
     </div>
   );

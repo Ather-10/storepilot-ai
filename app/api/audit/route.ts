@@ -92,12 +92,69 @@ export async function POST(request: NextRequest) {
     // 7. Calculate audit score
     const auditScore = calculateAuditScore(findings);
 
-    // 8. Save audit with authenticated user's ID
+    // 8. Identify the website domain
+    const websiteUrl = new URL(parsedWebsite.pageUrl);
+
+    const domain = websiteUrl.hostname
+      .toLowerCase()
+      .replace(/^www\./, "");
+
+    // 9. Create or reactivate the user's website record
+    const { error: websiteUpsertError } = await supabase
+      .from("websites")
+      .upsert(
+        {
+          user_id: user.id,
+          domain,
+          website_url: parsedWebsite.pageUrl,
+          archived_at: null,
+        },
+        {
+          onConflict: "user_id,domain",
+          ignoreDuplicates: false,
+        }
+      );
+
+    if (websiteUpsertError) {
+      console.error(
+        "Website registration error:",
+        websiteUpsertError
+      );
+
+      return NextResponse.json(
+        { error: "Unable to register this website." },
+        { status: 500 }
+      );
+    }
+
+    // 10. Fetch the existing or newly created website ID
+    const { data: website, error: websiteFetchError } =
+      await supabase
+        .from("websites")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("domain", domain)
+        .single();
+
+    if (websiteFetchError || !website) {
+      console.error(
+        "Website lookup error:",
+        websiteFetchError
+      );
+
+      return NextResponse.json(
+        { error: "Unable to find the registered website." },
+        { status: 500 }
+      );
+    }
+
+    // 11. Save audit linked to its website
     const { data: savedAudit, error: auditError } =
       await supabase
         .from("audits")
         .insert({
           user_id: user.id,
+          website_id: website.id,
           website_url: parsedWebsite.pageUrl,
           score: auditScore.score,
           status: "completed",
@@ -122,7 +179,7 @@ export async function POST(request: NextRequest) {
 
     savedAuditId = savedAudit.id;
 
-    // 9. Save findings linked to the audit
+    // 12. Save findings linked to the audit
     if (findings.length > 0) {
       const findingsToInsert = findings.map((finding) => ({
         audit_id: savedAuditId,
@@ -145,7 +202,8 @@ export async function POST(request: NextRequest) {
         const { error: cleanupError } = await supabase
           .from("audits")
           .delete()
-          .eq("id", savedAuditId);
+          .eq("id", savedAuditId)
+          .eq("user_id", user.id);
 
         if (cleanupError) {
           console.error("Audit cleanup error:", cleanupError);
@@ -158,11 +216,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 10. Return completed audit
+    // 13. Return completed audit
     return NextResponse.json({
       success: true,
       data: {
         auditId: savedAuditId,
+        websiteId: website.id,
+        websiteDomain: domain,
         websiteUrl: parsedWebsite.pageUrl,
         score: auditScore.score,
         summary: auditScore.summary,
