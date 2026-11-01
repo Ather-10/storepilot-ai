@@ -76,7 +76,7 @@ export default function WebsitesPage() {
 
   const loadWebsites = useCallback(async () => {
     try {
-      setError("");
+     setError("")
 
       const [activeResponse, archivedResponse] = await Promise.all([
         fetch("/api/websites", { cache: "no-store" }),
@@ -109,36 +109,55 @@ export default function WebsitesPage() {
     }
   }, []);
 
-  useEffect(() => {
+   useEffect(() => {
   let ignore = false;
 
   async function fetchWebsites() {
-    try {
-      const [activeResponse, archivedResponse] = await Promise.all([
-        fetch("/api/websites"),
-        fetch("/api/websites?view=archived"),
-      ]);
+    const [activeResponse, archivedResponse] = await Promise.all([
+      fetch("/api/websites", { cache: "no-store" }),
+      fetch("/api/websites?view=archived", { cache: "no-store" }),
+    ]);
 
-      const activeResult = await activeResponse.json();
-      const archivedResult = await archivedResponse.json();
+    const [activeResult, archivedResult] = await Promise.all([
+      activeResponse.json(),
+      archivedResponse.json(),
+    ]);
 
-      if (ignore) return;
-
-      if (activeResult.success) {
-        setWebsites(activeResult.data);
-      }
-
-      if (archivedResult.success) {
-        setArchivedWebsites(archivedResult.data);
-      }
-    } catch (error) {
-      if (!ignore) {
-        console.error("Website loading error:", error);
-      }
+    if (!activeResponse.ok) {
+      throw new Error(activeResult.error || "Unable to load websites.");
     }
+
+    if (!archivedResponse.ok) {
+      throw new Error(
+        archivedResult.error || "Unable to load archived websites."
+      );
+    }
+
+    return {
+      activeWebsites: activeResult.data ?? [],
+      archivedWebsites: archivedResult.data ?? [],
+    };
   }
 
-  void fetchWebsites();
+  fetchWebsites()
+    .then((result) => {
+      if (ignore) return;
+
+      setWebsites(result.activeWebsites);
+      setArchivedWebsites(result.archivedWebsites);
+    })
+    .catch((err) => {
+      if (ignore) return;
+
+      setError(
+        err instanceof Error ? err.message : "Something went wrong."
+      );
+    })
+    .finally(() => {
+      if (!ignore) {
+        setLoading(false);
+      }
+    });
 
   return () => {
     ignore = true;
