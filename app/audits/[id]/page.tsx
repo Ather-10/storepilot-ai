@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -11,8 +10,6 @@ import {
   CalendarDays,
   CheckCircle2,
   AlertCircle,
-  AlertTriangle,
-  Info,
   RefreshCw,
   ShieldCheck,
   Search,
@@ -121,7 +118,10 @@ function EvidenceValue({ value }: { value: unknown }) {
   );
 }
 
-function FindingCard({ finding, index }: {
+function FindingCard({
+  finding,
+  index,
+}: {
   finding: Finding;
   index: number;
 }) {
@@ -145,7 +145,9 @@ function FindingCard({ finding, index }: {
 
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${severity.background} ${severity.color}`}>
+              <span
+                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${severity.background} ${severity.color}`}
+              >
                 {severity.label}
               </span>
 
@@ -225,7 +227,7 @@ function FindingCard({ finding, index }: {
   );
 }
 
-export default function AuditDetailsPage() {
+function AuditDetailsContent() {
   const params = useParams<{ id: string }>();
   const auditId = params.id;
 
@@ -269,60 +271,61 @@ export default function AuditDetailsPage() {
     }
   }, [auditId]);
 
-  
-useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-  async function fetchInitialAudit() {
-    try {
-      const response = await fetch(`/api/audit/${auditId}`, {
-        method: "GET",
-        cache: "no-store",
-      });
+    async function fetchInitialAudit() {
+      try {
+        const response = await fetch(`/api/audit/${auditId}`, {
+          method: "GET",
+          cache: "no-store",
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(
-          result.error || "Unable to load audit report."
-        );
-      }
+        if (!response.ok) {
+          throw new Error(
+            result.error || "Unable to load audit report."
+          );
+        }
 
-      if (!result.success || !result.data?.audit) {
-        throw new Error("Invalid audit report response.");
-      }
+        if (!result.success || !result.data?.audit) {
+          throw new Error("Invalid audit report response.");
+        }
 
-      if (!cancelled) {
-        setDetails(result.data);
-      }
-    } catch (err) {
-      if (!cancelled) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Something went wrong while loading the report."
-        );
-      }
-    } finally {
-      if (!cancelled) {
-        setLoading(false);
+        if (!cancelled) {
+          setDetails(result.data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Something went wrong while loading the report."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
-  }
 
-  void fetchInitialAudit();
+    void fetchInitialAudit();
 
-  return () => {
-    cancelled = true;
-  };
-}, [auditId]);
-
+    return () => {
+      cancelled = true;
+    };
+  }, [auditId]);
 
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f8fc] px-5">
         <div className="text-center">
-          <RefreshCw className="mx-auto mb-4 animate-spin text-blue-600" size={30} />
+          <RefreshCw
+            className="mx-auto mb-4 animate-spin text-blue-600"
+            size={30}
+          />
           <h2 className="font-semibold text-slate-800">
             Preparing your audit report
           </h2>
@@ -338,7 +341,10 @@ useEffect(() => {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f8fc] px-5">
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <AlertCircle className="mx-auto mb-4 text-red-500" size={36} />
+          <AlertCircle
+            className="mx-auto mb-4 text-red-500"
+            size={36}
+          />
           <h2 className="text-xl font-bold text-slate-900">
             Report unavailable
           </h2>
@@ -389,7 +395,6 @@ useEffect(() => {
   return (
     <main className="min-h-screen bg-[#f7f8fc]">
       <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
-        {/* Header */}
         <div className="mb-8">
           <Link
             href="/"
@@ -425,7 +430,6 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Website information */}
         <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
             <div className="flex items-center gap-4">
@@ -467,7 +471,6 @@ useEffect(() => {
           </div>
         </section>
 
-        {/* Score and statistics */}
         <section className="mb-6 grid gap-5 lg:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-1">
             <div className="mb-5 flex items-center justify-between">
@@ -571,7 +574,6 @@ useEffect(() => {
           </div>
         </section>
 
-        {/* Findings */}
         <section>
           <div className="mb-5 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
             <div>
@@ -600,7 +602,10 @@ useEffect(() => {
             </div>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center">
-              <CheckCircle2 className="mx-auto mb-3 text-green-500" size={36} />
+              <CheckCircle2
+                className="mx-auto mb-3 text-green-500"
+                size={36}
+              />
               <h3 className="font-semibold text-slate-900">
                 No findings detected
               </h3>
@@ -611,7 +616,6 @@ useEffect(() => {
           )}
         </section>
 
-        {/* Footer */}
         <footer className="mt-10 border-t border-slate-200 py-6 text-center">
           <p className="text-xs text-slate-400">
             Generated by StorePilot AI · Website Intelligence
@@ -619,5 +623,30 @@ useEffect(() => {
         </footer>
       </div>
     </main>
+  );
+}
+
+export default function AuditDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f7f8fc] px-5">
+          <div className="text-center">
+            <RefreshCw
+              className="mx-auto mb-4 animate-spin text-blue-600"
+              size={30}
+            />
+            <h2 className="font-semibold text-slate-800">
+              Preparing your audit report
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Loading website intelligence...
+            </p>
+          </div>
+        </main>
+      }
+    >
+      <AuditDetailsContent />
+    </Suspense>
   );
 }

@@ -2,7 +2,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+
 import {
   ArrowRight,
   ArrowUpRight,
@@ -11,9 +13,7 @@ import {
   Search,
   ShieldCheck,
   AlertTriangle,
-  Clock3,
   Sparkles,
-  ExternalLink,
   FileSearch,
   CheckCircle2,
   RefreshCw,
@@ -55,6 +55,7 @@ type AuditHistoryResponse = {
 };
 
 export function Overview() {
+   const router = useRouter();
   const [url, setUrl] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -554,9 +555,9 @@ export function Overview() {
                     <tr
                       key={audit.id}
                       className="group cursor-pointer transition hover:bg-violet-50/40"
-                      onClick={() => {
-                        window.location.href = `/audits/${audit.id}`;
-                      }}
+                        onClick={() => {
+                          router.push(`/audits/${audit.id}`);
+                    }}
                     >
                       <td className="whitespace-nowrap px-5 py-4">
                         <div className="flex items-center gap-3">
