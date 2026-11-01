@@ -118,3 +118,76 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  request: Request,
+  context: RouteContext
+) {
+  try {
+    const { id } = await context.params;
+
+    // Validate audit ID
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    if (!uuidRegex.test(id)) {
+      return NextResponse.json(
+        { error: "Invalid audit ID." },
+        { status: 400 }
+      );
+    }
+
+    const supabase = await createClient();
+
+    // Authenticate user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Please log in to delete this audit." },
+        { status: 401 }
+      );
+    }
+
+    // Delete only an audit owned by this user
+    const { data: deletedAudit, error: deleteError } = await supabase
+      .from("audits")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .select("id")
+      .maybeSingle();
+
+    if (deleteError) {
+      console.error("Audit deletion database error:", deleteError);
+
+      return NextResponse.json(
+        { error: "Unable to delete this audit." },
+        { status: 500 }
+      );
+    }
+
+    if (!deletedAudit) {
+      return NextResponse.json(
+        { error: "Audit not found or you do not have permission to delete it." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Audit deleted successfully.",
+      data: { id: deletedAudit.id },
+    });
+  } catch (error) {
+    console.error("Audit Delete API Error:", error);
+
+    return NextResponse.json(
+      { error: "An unexpected error occurred." },
+      { status: 500 }
+    );
+  }
+}

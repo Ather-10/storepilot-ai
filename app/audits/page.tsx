@@ -16,6 +16,7 @@ import {
   FileSearch,
   Filter,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 
 type Audit = {
@@ -82,6 +83,7 @@ export default function AuditHistoryPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadAudits = useCallback(async () => {
     setLoading(true);
@@ -149,6 +151,43 @@ export default function AuditHistoryPage() {
       cancelled = true;
     };
   }, []);
+
+  const handleDeleteAudit = async (audit: Audit) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete the audit for ${getDomain(
+        audit.website_url
+      )}?\n\nAll findings associated with this audit will also be deleted. This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(audit.id);
+      setError("");
+
+      const response = await fetch(`/api/audit/${audit.id}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete this audit.");
+      }
+
+      setAudits((currentAudits) =>
+        currentAudits.filter((item) => item.id !== audit.id)
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while deleting the audit."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filteredAudits = useMemo(() => {
     return audits.filter((audit) => {
@@ -300,7 +339,7 @@ export default function AuditHistoryPage() {
               <button
                 type="button"
                 onClick={loadAudits}
-                disabled={loading}
+                disabled={loading || deletingId !== null}
                 aria-label="Refresh audit history"
                 className="flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
               >
@@ -325,13 +364,14 @@ export default function AuditHistoryPage() {
 
           {/* Error */}
           {error && (
-            <div className="flex flex-col items-center justify-center gap-3 px-5 py-16 text-center">
+            <div className="flex flex-col items-center justify-center gap-3 px-5 py-8 text-center">
               <AlertCircle size={30} className="text-red-500" />
               <p className="text-sm font-medium text-slate-800">{error}</p>
               <button
                 type="button"
                 onClick={loadAudits}
-                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+                disabled={loading || deletingId !== null}
+                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
               >
                 Try Again
               </button>
@@ -411,7 +451,7 @@ export default function AuditHistoryPage() {
                         Date
                       </th>
                       <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Action
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -465,14 +505,36 @@ export default function AuditHistoryPage() {
                             {formatDate(audit.created_at)}
                           </td>
 
-                          <td className="px-6 py-4 text-right">
-                            <Link
-                              href={`/audits/${audit.id}`}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                            >
-                              View Report
-                              <ArrowUpRight size={14} />
-                            </Link>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                href={`/audits/${audit.id}`}
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                              >
+                                View Report
+                                <ArrowUpRight size={14} />
+                              </Link>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAudit(audit)}
+                                disabled={deletingId !== null}
+                                aria-label={`Delete audit for ${getDomain(audit.website_url)}`}
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {deletingId === audit.id ? (
+                                  <RefreshCw
+                                    size={14}
+                                    className="animate-spin"
+                                  />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
+                                {deletingId === audit.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -535,7 +597,11 @@ export default function AuditHistoryPage() {
                           <p className="mt-1 text-xs font-semibold text-slate-700">
                             {new Date(audit.created_at).toLocaleDateString(
                               "en-US",
-                              { day: "numeric", month: "short", year: "numeric" }
+                              {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              }
                             )}
                           </p>
                         </div>
@@ -548,6 +614,25 @@ export default function AuditHistoryPage() {
                         View Full Report
                         <ArrowUpRight size={16} />
                       </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAudit(audit)}
+                        disabled={deletingId !== null}
+                        className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deletingId === audit.id ? (
+                          <RefreshCw
+                            size={15}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <Trash2 size={15} />
+                        )}
+                        {deletingId === audit.id
+                          ? "Deleting..."
+                          : "Delete Audit"}
+                      </button>
                     </div>
                   );
                 })}
