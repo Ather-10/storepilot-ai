@@ -55,7 +55,8 @@ type AuditHistoryResponse = {
 };
 
 export function Overview() {
-   const router = useRouter();
+  const router = useRouter();
+
   const [url, setUrl] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -187,7 +188,6 @@ export function Overview() {
       setUrl(auditData.websiteUrl);
       setMessage("Your website audit has been completed successfully.");
 
-      // Refresh history separately from the audit operation.
       setHistoryLoading(true);
       setHistoryError("");
 
@@ -272,30 +272,11 @@ export function Overview() {
 
   return (
     <main className="min-w-0 flex-1">
-      {/* Header */}
-      <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8">
-        <div>
-          <p className="text-sm text-slate-500">
-            Workspace / Overview
-          </p>
-          <h2 className="text-xl font-bold text-slate-900">
-            Dashboard
-          </h2>
-        </div>
+      <div className="mx-auto max-w-7xl space-y-6 p-4 sm:space-y-8 sm:p-8">
 
-        <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          </span>
-          Audit engine available
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl space-y-8 p-5 sm:p-8">
         {/* Welcome */}
         <section>
-          <p className="text-xs font-bold tracking-[0.16em] text-violet-600">
+          <p className="text-[10px] font-bold tracking-[0.16em] text-violet-600 sm:text-xs">
             WEBSITE INTELLIGENCE PLATFORM
           </p>
 
@@ -303,7 +284,7 @@ export function Overview() {
             Welcome to StorePilot AI
           </h1>
 
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+          <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6">
             Understand your website performance, uncover technical issues
             and discover opportunities to improve your online presence.
           </p>
@@ -312,29 +293,41 @@ export function Overview() {
         {/* Audit form */}
         <section
           id="overview"
-          className="relative overflow-hidden rounded-2xl bg-[#171c32] p-6 text-white shadow-xl shadow-slate-200 sm:p-9"
+          className="relative overflow-hidden rounded-2xl bg-[#171c32] p-4 text-white shadow-xl shadow-slate-200 sm:p-9"
         >
           <div className="pointer-events-none absolute -right-20 -top-32 h-80 w-80 rounded-full bg-violet-600/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-32 -left-20 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
 
           <div className="relative max-w-2xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
-              <Sparkles size={14} />
-              Website intelligence
+
+            {/* Compact badges - same row on mobile */}
+            <div className="mb-4 flex flex-nowrap items-center gap-1.5 sm:mb-5 sm:gap-2">
+              <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-400/30 bg-violet-400/10 px-2 py-1 text-[10px] font-medium text-violet-200 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-xs">
+                <Sparkles size={12} />
+                Website intelligence
+              </div>
+
+              <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-300 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-xs">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                </span>
+                Audit engine available
+              </div>
             </div>
 
-            <h2 className="text-2xl font-bold sm:text-3xl">
+            <h2 className="text-xl font-bold sm:text-3xl">
               Discover what&apos;s holding your website back.
             </h2>
 
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
+            <p className="mt-2 max-w-xl text-xs leading-5 text-slate-300 sm:mt-3 sm:text-sm sm:leading-6">
               Analyze your website&apos;s SEO, technical health, content
               structure and accessibility with a detailed website audit.
             </p>
 
             <form
               onSubmit={handleAuditSubmit}
-              className="mt-7 flex flex-col gap-3 sm:flex-row"
+              className="mt-4 flex flex-col gap-3 sm:mt-7 sm:flex-row"
             >
               <div className="relative flex-1">
                 <Globe
@@ -350,7 +343,7 @@ export function Overview() {
                     setAuditResult(null);
                   }}
                   placeholder="https://yourwebsite.com"
-                  className="h-12 border-white/10 bg-white pl-11 text-slate-900 placeholder:text-slate-400"
+                  className="h-11 border-white/10 bg-white pl-11 text-slate-900 placeholder:text-slate-400 sm:h-12"
                   aria-label="Website URL"
                 />
               </div>
@@ -358,7 +351,7 @@ export function Overview() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="h-12 bg-violet-600 px-6 text-white hover:bg-violet-500"
+                className="h-11 bg-violet-600 px-6 text-white hover:bg-violet-500 sm:h-12"
               >
                 {loading ? (
                   <>
@@ -385,7 +378,7 @@ export function Overview() {
               </p>
             )}
 
-            <p className="mt-4 text-xs text-slate-400">
+            <p className="mt-3 text-[10px] text-slate-400 sm:mt-4 sm:text-xs">
               Public websites only · No installation required
             </p>
           </div>
@@ -399,6 +392,7 @@ export function Overview() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                   <CheckCircle2 size={21} />
                 </div>
+
                 <div>
                   <h3 className="font-bold text-slate-900">
                     Audit completed successfully
@@ -460,7 +454,7 @@ export function Overview() {
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {statistics.map((stat) => {
               const Icon = stat.icon;
 
@@ -473,6 +467,7 @@ export function Overview() {
                     <span className="text-sm font-medium text-slate-500">
                       {stat.label}
                     </span>
+
                     <div className={`rounded-lg p-2.5 ${stat.iconStyle}`}>
                       <Icon size={19} />
                     </div>
@@ -527,21 +522,33 @@ export function Overview() {
               <tbody className="divide-y divide-slate-100">
                 {historyLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400">
-                      <RefreshCw className="mr-2 inline animate-spin" size={15} />
+                    <td
+                      colSpan={6}
+                      className="px-5 py-12 text-center text-sm text-slate-400"
+                    >
+                      <RefreshCw
+                        className="mr-2 inline animate-spin"
+                        size={15}
+                      />
                       Loading your audit history...
                     </td>
                   </tr>
                 ) : historyError ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-sm text-red-500">
+                    <td
+                      colSpan={6}
+                      className="px-5 py-10 text-center text-sm text-red-500"
+                    >
                       {historyError}
                     </td>
                   </tr>
                 ) : auditHistory.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-5 py-12 text-center">
-                      <FileSearch className="mx-auto mb-3 text-slate-300" size={30} />
+                      <FileSearch
+                        className="mx-auto mb-3 text-slate-300"
+                        size={30}
+                      />
                       <p className="font-medium text-slate-700">
                         No audits yet
                       </p>
@@ -555,15 +562,16 @@ export function Overview() {
                     <tr
                       key={audit.id}
                       className="group cursor-pointer transition hover:bg-violet-50/40"
-                        onClick={() => {
-                          router.push(`/audits/${audit.id}`);
-                    }}
+                      onClick={() => {
+                        router.push(`/audits/${audit.id}`);
+                      }}
                     >
                       <td className="whitespace-nowrap px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
                             <Globe size={17} />
                           </div>
+
                           <span className="font-semibold text-slate-800 group-hover:text-violet-700">
                             {audit.domain}
                           </span>
@@ -593,7 +601,9 @@ export function Overview() {
                       </td>
 
                       <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-800">
-                        {audit.score !== null ? `${audit.score}/100` : "—"}
+                        {audit.score !== null
+                          ? `${audit.score}/100`
+                          : "—"}
                       </td>
 
                       <td className="whitespace-nowrap px-5 py-4 text-right">
@@ -614,13 +624,16 @@ export function Overview() {
             </table>
           </div>
 
-          {!historyLoading && !historyError && auditHistory.length > 5 && (
-            <div className="border-t border-slate-100 px-5 py-3 text-center">
-              <p className="text-xs text-slate-400">
-                Showing the 5 most recent audits. Full audit history will be available in a dedicated page.
-              </p>
-            </div>
-          )}
+          {!historyLoading &&
+            !historyError &&
+            auditHistory.length > 5 && (
+              <div className="border-t border-slate-100 px-5 py-3 text-center">
+                <p className="text-xs text-slate-400">
+                  Showing the 5 most recent audits. Full audit history will
+                  be available in a dedicated page.
+                </p>
+              </div>
+            )}
         </section>
 
         {/* Footer information */}
@@ -628,6 +641,7 @@ export function Overview() {
           <div className="rounded-lg bg-white p-2 text-violet-600 shadow-sm">
             <ShieldCheck size={19} />
           </div>
+
           <div>
             <p className="text-sm font-semibold text-slate-800">
               Your website intelligence, in one place.
