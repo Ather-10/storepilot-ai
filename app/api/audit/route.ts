@@ -52,7 +52,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Validate URL
+    // 3. Validate optional idempotency key
+    const idempotencyKey =
+      "idempotencyKey" in body
+        ? body.idempotencyKey
+        : undefined;
+
+    if (
+      idempotencyKey !== undefined &&
+      (
+        typeof idempotencyKey !== "string" ||
+        !/^guest-audit-v1:\d{4}-\d{2}-\d{2}T/.test(idempotencyKey) ||
+        idempotencyKey.length > 128
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Invalid idempotency key." },
+        { status: 400 }
+      );
+    }
+
+    // 4. Validate URL
     const validation = validateWebsiteUrl(body.url);
 
     if (!validation.valid) {
@@ -62,7 +82,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Fetch website
+    // 5. Fetch website
     const fetchResult = await fetchWebsite(
       validation.url.toString()
     );
@@ -80,26 +100,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Parse HTML
+    // 6. Parse HTML
     const parsedWebsite = parseWebsiteHtml(
       fetchResult.html,
       fetchResult.url
     );
 
-    // 6. Run SEO rules
+    // 7. Run SEO rules
     const findings = runSeoRules(parsedWebsite);
 
-    // 7. Calculate audit score
+    // 8. Calculate audit score
     const auditScore = calculateAuditScore(findings);
 
-    // 8. Identify the website domain
+    // 9. Identify website domain
     const websiteUrl = new URL(parsedWebsite.pageUrl);
 
     const domain = websiteUrl.hostname
       .toLowerCase()
       .replace(/^www\./, "");
 
-    // 9. Create or reactivate the user's website record
+    // 10. Create or reactivate the user's website record
     const { error: websiteUpsertError } = await supabase
       .from("websites")
       .upsert(
@@ -127,7 +147,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 10. Fetch the existing or newly created website ID
+    // 11. Fetch the existing or newly created website ID
     const { data: website, error: websiteFetchError } =
       await supabase
         .from("websites")
@@ -148,71 +168,123 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 11. Save audit linked to its website
-    const { data: savedAudit, error: auditError } =
-      await supabase
-        .from("audits")
-        .insert({
-          user_id: user.id,
-          website_id: website.id,
-          website_url: parsedWebsite.pageUrl,
-          score: auditScore.score,
-          status: "completed",
-          total_findings: auditScore.summary.totalFindings,
-          critical: auditScore.summary.critical,
-          high: auditScore.summary.high,
-          medium: auditScore.summary.medium,
-          low: auditScore.summary.low,
-          info: auditScore.summary.info,
-        })
-        .select("id")
-        .single();
+    // 12. Save audit and findings
+    if (idempotencyKey) {
+      // Guest migration: atomic database operation
+      const { data: migrationResult, error: migrationError } =
+        await supabase.rpc("save_audit_idempotently", {
+          p_user_id: user.id,
+          p_website_id: website.id,
+          p_website_url: parsedWebsite.pageUrl,
+          p_score: auditScore.score,
+          p_total_findings: auditScore.summary.totalFindings,
+          p_critical: auditScore.summary.critical,
+          p_high: auditScore.summary.high,
+          p_medium: auditScore.summary.medium,
+          p_low: auditScore.summary.low,
+          p_info: auditScore.summary.info,
+          p_idempotency_key: idempotencyKey,
+          p_findings: findings.map((finding) => ({
+            category: finding.category,
+            severity: finding.severity,
+            title: finding.title,
+            description: finding.description,
+            recommendation: finding.recommendation,
+            evidence: finding.evidence ?? null,
+          })),
+        });
 
-    if (auditError || !savedAudit) {
-      console.error("Audit database error:", auditError);
-
-      return NextResponse.json(
-        { error: "Unable to save audit to the database." },
-        { status: 500 }
-      );
-    }
-
-    savedAuditId = savedAudit.id;
-
-    // 12. Save findings linked to the audit
-    if (findings.length > 0) {
-      const findingsToInsert = findings.map((finding) => ({
-        audit_id: savedAuditId,
-        category: finding.category,
-        severity: finding.severity,
-        title: finding.title,
-        description: finding.description,
-        recommendation: finding.recommendation,
-        evidence: finding.evidence,
-      }));
-
-      const { error: findingsError } = await supabase
-        .from("audit_findings")
-        .insert(findingsToInsert);
-
-      if (findingsError) {
-        console.error("Findings database error:", findingsError);
-
-        // Remove the audit if its findings could not be saved.
-        const { error: cleanupError } = await supabase
-          .from("audits")
-          .delete()
-          .eq("id", savedAuditId)
-          .eq("user_id", user.id);
-
-        if (cleanupError) {
-          console.error("Audit cleanup error:", cleanupError);
-        }
+      if (
+        migrationError ||
+        !migrationResult ||
+        migrationResult.length === 0 ||
+        !migrationResult[0].audit_id
+      ) {
+        console.error(
+          "Guest migration save error:",
+          migrationError
+        );
 
         return NextResponse.json(
-          { error: "Unable to save audit findings." },
+          { error: "Unable to save migrated audit." },
           { status: 500 }
         );
+      }
+
+      savedAuditId = migrationResult[0].audit_id;
+    } else {
+      // Normal authenticated audit: preserve existing behaviour
+      const { data: savedAudit, error: auditError } =
+        await supabase
+          .from("audits")
+          .insert({
+            user_id: user.id,
+            website_id: website.id,
+            website_url: parsedWebsite.pageUrl,
+            score: auditScore.score,
+            status: "completed",
+            total_findings: auditScore.summary.totalFindings,
+            critical: auditScore.summary.critical,
+            high: auditScore.summary.high,
+            medium: auditScore.summary.medium,
+            low: auditScore.summary.low,
+            info: auditScore.summary.info,
+          })
+          .select("id")
+          .single();
+
+      if (auditError || !savedAudit) {
+        console.error("Audit database error:", auditError);
+
+        return NextResponse.json(
+          { error: "Unable to save audit to the database." },
+          { status: 500 }
+        );
+      }
+
+      savedAuditId = savedAudit.id;
+
+      // Save findings linked to the audit
+      if (findings.length > 0) {
+        const findingsToInsert = findings.map((finding) => ({
+          audit_id: savedAuditId,
+          category: finding.category,
+          severity: finding.severity,
+          title: finding.title,
+          description: finding.description,
+          recommendation: finding.recommendation,
+          evidence: finding.evidence,
+        }));
+
+        const { error: findingsError } = await supabase
+          .from("audit_findings")
+          .insert(findingsToInsert);
+
+        if (findingsError) {
+          console.error(
+            "Findings database error:",
+            findingsError
+          );
+
+          // Remove audit if findings could not be saved
+          const { error: cleanupError } = await supabase
+            .from("audits")
+            .delete()
+            .eq("id", savedAuditId)
+            .eq("user_id", user.id);
+
+          if (cleanupError) {
+            console.error(
+              "Audit cleanup error:",
+              cleanupError
+            );
+          }
+
+          return NextResponse.json(
+            { error: "Unable to save audit findings." },
+            { status: 500 }
+          );
+        }
       }
     }
 

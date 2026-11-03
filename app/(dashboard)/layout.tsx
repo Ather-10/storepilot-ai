@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { createClient } from "@/lib/supabase/server";
+import { GuestAuditMigration } from "@/components/audit/guest-audit-migration";
 
 async function AuthenticatedDashboard({
   children,
@@ -25,6 +26,7 @@ async function AuthenticatedDashboard({
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f8fc] lg:flex-row">
+          <GuestAuditMigration />
       <Sidebar />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

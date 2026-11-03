@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
 
   const code = searchParams.get("code");
-  const requestedNext = searchParams.get("next") ?? "/";
+  const requestedNext = searchParams.get("next") ?? "/dashboard";
 
   const next =
     requestedNext.startsWith("/") &&

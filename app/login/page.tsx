@@ -6,14 +6,69 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+const GUEST_AUDIT_KEY = "storepilot_guest_audit";
+
+type GuestAuditStorage = {
+  version: number;
+    savedAt?: string;
+  data?: {
+    websiteUrl?: string;
+  };
+};
+
 export default function LoginPage() {
   const router = useRouter();
-  //const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  async function migrateGuestAudit() {
+    try {
+      const savedAudit = localStorage.getItem(GUEST_AUDIT_KEY);
+
+      if (!savedAudit) return;
+
+      const parsed: GuestAuditStorage = JSON.parse(savedAudit);
+
+      if (
+        parsed.version !== 1 ||
+          typeof parsed.savedAt !== "string" ||
+           !parsed.savedAt.trim() ||
+        typeof parsed.data?.websiteUrl !== "string" ||
+        !parsed.data.websiteUrl.trim()
+      ) {
+        console.warn("Guest audit data is invalid. Keeping local copy.");
+        return;
+      }
+
+      const response = await fetch("/api/audit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: parsed.data.websiteUrl,
+            idempotencyKey: `guest-audit-v1:${parsed.savedAt}`,
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn("Guest audit migration failed. Local copy preserved.");
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        localStorage.removeItem(GUEST_AUDIT_KEY);
+        console.info("Guest audit migrated successfully.");
+      }
+    } catch (migrationError) {
+      console.warn("Guest audit migration error:", migrationError);
+    }
+  }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,7 +89,9 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace("/");
+      await migrateGuestAudit();
+
+      router.replace("/dashboard");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
@@ -42,10 +99,6 @@ export default function LoginPage() {
       setLoading(false);
     }
   }
-
-   
- // const verificationError =
-  //  searchParams.get("error") === "verification_failed";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
@@ -94,11 +147,11 @@ export default function LoginPage() {
             />
           </div>
 
-         {error && (
-                <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-                    {error}
-                </p>
-                )}
+          {error && (
+            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"

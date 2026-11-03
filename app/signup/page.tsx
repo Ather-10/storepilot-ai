@@ -45,7 +45,7 @@ export default function SignupPage() {
           data: {
             full_name: fullName,
           },
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/`,
+          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/dashboard`,
         },
       });
 
@@ -55,7 +55,7 @@ export default function SignupPage() {
       }
 
       if (data.session) {
-        router.push("/");
+        router.push("/dashboard");
         router.refresh();
         return;
       }
